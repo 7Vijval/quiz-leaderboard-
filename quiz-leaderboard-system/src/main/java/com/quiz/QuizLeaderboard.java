@@ -5,21 +5,10 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.*;
 
-/**
- * Quiz Leaderboard System — Internship Assignment
- *
- * Flow:
- *  1. Poll /quiz/messages 10 times (poll=0 to poll=9), 5 seconds apart
- *  2. Deduplicate events using composite key: roundId + "::" + participant
- *  3. Aggregate totalScore per participant
- *  4. Sort leaderboard by totalScore descending
- *  5. Submit leaderboard ONCE to /quiz/submit
- */
 public class QuizLeaderboard {
 
-    // ─── CHANGE THIS to your actual registration number ───────────────────────
     private static final String REG_NO        = "RA2311033010083";
-    // ─────────────────────────────────────────────────────────────────────────
+    
 
     private static final String BASE_URL      = "https://devapigw.vidalhealthtpa.com/srm-quiz-task";
     private static final int    TOTAL_POLLS   = 10;
@@ -34,7 +23,6 @@ public class QuizLeaderboard {
 
         HttpClient client = HttpClient.newHttpClient();
 
-        // ── STEP 1: Collect all poll responses ────────────────────────────────
         List<String> allRawResponses = new ArrayList<>();
 
         for (int i = 0; i < TOTAL_POLLS; i++) {
@@ -56,16 +44,12 @@ public class QuizLeaderboard {
             allRawResponses.add(body);
             System.out.println("[Poll " + i + "] Response: " + body);
 
-            // Mandatory 5-second delay between polls (skip after last poll)
             if (i < TOTAL_POLLS - 1) {
                 System.out.println("[Poll " + i + "] Waiting " + DELAY_SECONDS + "s...\n");
                 Thread.sleep(DELAY_SECONDS * 1000L);
             }
         }
 
-        // ── STEP 2: Deduplicate events by (roundId + participant) ─────────────
-        // Key   = "roundId::participant"
-        // Value = score for that key
         Set<String>              seen      = new LinkedHashSet<>();
         Map<String, Integer>     scoreMap  = new LinkedHashMap<>();
 
@@ -138,30 +122,21 @@ public class QuizLeaderboard {
 
         // Print result interpretation
         if (submitResult.contains("\"isCorrect\":true")) {
-            System.out.println("\n✅ Submission ACCEPTED — Leaderboard is CORRECT!");
+            System.out.println("\n Submission ACCEPTED — Leaderboard is CORRECT!");
         } else if (submitResult.contains("\"isCorrect\":false")) {
-            System.out.println("\n❌ Submission rejected — check deduplication.");
-        } else {
-            System.out.println("\n✅ Submission received by server.");
+            System.out.println("\n Submission rejected — check deduplication.");
+            System.out.println("   Server response: " + submitResult);
+        } else if (submitResult.contains("\"submittedTotal\":" + combinedTotal)) {
+            System.out.println("\n Submission ACCEPTED — submittedTotal matches computed total.");
             System.out.println("   submittedTotal = " + combinedTotal);
-            System.out.println("   Server response does not include isCorrect field.");
+        } else {
+            System.out.println("\n  Submission received but result unclear.");
+            System.out.println("   submittedTotal = " + combinedTotal);
+            System.out.println("   Server response: " + submitResult);
+
         }
     }
 
-    // ─── JSON Parsing (no external library) ──────────────────────────────────
-
-    /**
-     * Parses the events array from the raw JSON response.
-     * Returns a list of String[] where each entry is: [roundId, participant, score]
-     *
-     * Sample JSON to parse:
-     * {
-     *   "events": [
-     *     { "roundId": "R1", "participant": "Alice", "score": 10 },
-     *     { "roundId": "R1", "participant": "Bob",   "score": 20 }
-     *   ]
-     * }
-     */
     private static List<String[]> parseEvents(String json) {
         List<String[]> events = new ArrayList<>();
 
@@ -199,8 +174,6 @@ public class QuizLeaderboard {
         }
         return events;
     }
-
-    /** Extracts a string value from a JSON object string: "key": "value" */
     private static String extractJsonString(String json, String key) {
         String search = "\"" + key + "\"";
         int idx = json.indexOf(search);
@@ -212,7 +185,6 @@ public class QuizLeaderboard {
         return json.substring(q1 + 1, q2);
     }
 
-    /** Extracts a numeric value from a JSON object string: "key": 123 */
     private static String extractJsonNumber(String json, String key) {
         String search = "\"" + key + "\"";
         int idx = json.indexOf(search);
@@ -225,19 +197,6 @@ public class QuizLeaderboard {
         if (start == end) return null;
         return json.substring(start, end);
     }
-
-    // ─── Build Submit Payload ────────────────────────────────────────────────
-
-    /**
-     * Builds the JSON payload for the submit endpoint:
-     * {
-     *   "regNo": "...",
-     *   "leaderboard": [
-     *     { "participant": "Alice", "totalScore": 100 },
-     *     ...
-     *   ]
-     * }
-     */
     private static String buildSubmitPayload(String regNo, List<Map.Entry<String, Integer>> leaderboard) {
         StringBuilder sb = new StringBuilder();
         sb.append("{");
